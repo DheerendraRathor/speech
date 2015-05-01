@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# <nbformat>3.0</nbformat>
-
-
 import json
 import random
 import subprocess
@@ -9,14 +5,7 @@ import sys
 from constants import compilation_string, equal_graph_phones_file, bin_dir, bin_file, \
 training_data_file, testing_data_file, initial_probabilities_file
 
-import pandas as pd
-
 from collections import defaultdict
-import argparse
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-k", "--fold", help="number for k-fold validation", default=5, type=int)
-args = parser.parse_args()
 
 json_data = open(equal_graph_phones_file).read()
 
@@ -24,14 +13,15 @@ json_data = open(equal_graph_phones_file).read()
 data = json.loads(json_data)
 random.shuffle(data)
 
-json_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+json_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(int))))
 
+init_prob_1 = defaultdict(float)
 
-init_prob = defaultdict(float)
+init_prob_2 = defaultdict(float)
 
 total = len(data)
 
-k_fold = args.fold
+k_fold = 5
 group_count = total / k_fold
 remainder = total  % k_fold
 groups = []
@@ -49,11 +39,11 @@ for i in range(0,new_iter):
     groups.append(data[index: new_index])
     index = new_index
 
+
 diff_count = 0
 total_phones = 0
-confusion_matrix = defaultdict(lambda: defaultdict(int))
 
-for iteration in range(0,k_fold):
+for iteration in range(0,1):
     test_data = groups[iteration]
     test_dict = {}
     data = []
@@ -78,40 +68,42 @@ for iteration in range(0,k_fold):
         phone = elem[1]
         phones = phone.split(' ')
         phones.append('.')
+        phones.append(',')
         graph_list = list(graph)
-        for i in range(0,len(phones)-1):
-            json_dict[phones[i]][phones[i+1]][graph_list[i]] += 1
-        init_prob[phones[0]] += 1
+        for i in range(0,len(phones)-2):
+            json_dict[phones[i]][phones[i+1]][phones[i+2]][graph_list[i]] += 1
+        init_prob_1[phones[0]] += 1
+        init_prob_2[phones[1]] += 1
 
+    probability = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(float))))
+    count_1 = defaultdict(int)
 
-    probability = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-
-
-    count = defaultdict(int)
+    for phone_1 in json_dict:
+        for phone_2 in json_dict[phone_1]:
+            for phone_3 in json_dict[phone_1][phone_2]:
+                for key in json_dict[phone_1][phone_2][phone_3]:
+                    count_1[phone_1] += json_dict[phone_1][phone_2][phone_3][key]
 
 
     for phone_1 in json_dict:
         for phone_2 in json_dict[phone_1]:
-            for key in json_dict[phone_1][phone_2]:
-                count[phone_1] += json_dict[phone_1][phone_2][key]
-
-
-    for phone_1 in json_dict:
-        for phone_2 in json_dict[phone_1]:
-            for key in json_dict[phone_1][phone_2]:
-                probability[phone_1][phone_2][key] = float(json_dict[phone_1][phone_2][key])/float(count[phone_1])
+            for phone_3 in json_dict[phone_1][phone_2]:
+                for key in json_dict[phone_1][phone_2][phone_3]:
+                    probability[phone_1][phone_2][phone_3][key] = float(json_dict[phone_1][phone_2][phone_3][key])/float(count_1[phone_1])
 
 
     data_fin = []
     for phone_1 in sorted(probability):
         for phone_2 in sorted(probability[phone_1]):
-            for key in sorted(probability[phone_1][phone_2]):
-                string = ""
-                string += phone_1 + " "
-                string += phone_2 + " "
-                string += key + " "
-                string += str(probability[phone_1][phone_2][key])
-                data_fin.append(string)
+            for phone_3 in sorted(probability[phone_1][phone_2]):
+                for key in sorted(probability[phone_1][phone_2][phone_3]):
+                    string = ""
+                    string += phone_1 + " "
+                    string += phone_2 + " "
+                    string += phone_3 + " "
+                    string += key + " "
+                    string += str(probability[phone_1][phone_2][phone_3][key])
+                    data_fin.append(string)
 
     try:
         with open(training_data_file, 'w') as outfile:
@@ -123,18 +115,28 @@ for iteration in range(0,k_fold):
         sys.exit(0)
 
     try:
-        with open(initial_probabilities_file, 'w') as outfile:
-            for phone in sorted(init_prob):
-                outfile.write(phone+" "+str(init_prob[phone]/len(data))+"\n")
+        with open("temp/init_1.data", 'w') as outfile:
+            for phone in sorted(init_prob_1):
+                outfile.write(phone+" "+str(init_prob_1[phone]/len(data))+"\n")
+            outfile.write("--\n")
+        with open("temp/init_2.data", 'w') as outfile:
+            for phone in sorted(init_prob_2):
+                outfile.write(phone+" "+str(init_prob_2[phone]/len(data))+"\n")
             outfile.write("--\n")
     except IOError as e:
         sys.stderr.write(e)
         sys.exit(0)
 
+    print "All data generated"
+
+    output = ""
+
     try:
         f = open(testing_data_file)
         try:
             output = subprocess.check_output(bin_file, stdin = f)
+        except:
+            print output
         finally:
             f.close()
     except IOError as e:
@@ -143,33 +145,16 @@ for iteration in range(0,k_fold):
 
     output = output.strip()
     output = output.split('\n')
+    
     for i in range(0,len(test_data)):
         a = test_data[i][1].split()
         b = output[i].split()
-        for i in range(0,len(a)):
-            if a[i] != b[i]:
-                confusion_matrix[a[i]][b[i]] += 1
-                diff_count += 1
-            total_phones += 1
+        try:
+            for i in range(0,len(a)):
+                if a[i] != b[i]:
+                    diff_count += 1
+                total_phones += 1
+        except:
+            print a,b,i,diff_count, total_phones
 
-phonemes = ["AA","AE","AH","AO","AW","AY","B","CH","D","DH","EH","ER","EY","F","G","HH","IH","IY","JH","K","L","M","N","NG","OW","OY","P","R","S","SH","T","TH","UH","UW","V","W","Y","Z","ZH","SIL"]
-
-'''
-print "PHONEMES",
-for phone in phonemes:
-    print phone,
-print ""
-
-for key in phonemes:
-    print key,
-    for key2 in phonemes:
-        print confusion_matrix[key][key2],
-    print '\n'
-'''
-
-a = pd.DataFrame(confusion_matrix)
-
-print a.to_string(na_rep='.')
 print "Accuracy achieved in %d-fold validation: %.2f%%" % (k_fold, float(total_phones - diff_count)* 100/float(total_phones))
-
-

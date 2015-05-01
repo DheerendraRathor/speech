@@ -49,10 +49,10 @@ for i in range(0,new_iter):
 
 diff_count = 0
 total_phones = 0
-confusion_matrix = defaultdict(lambda: defaultdict(int))
 
 for iteration in range(0,k_fold):
     test_data = groups[iteration]
+    test_dict = {}
     data = []
 
     for temp in range(0,k_fold):
@@ -63,7 +63,8 @@ for iteration in range(0,k_fold):
     try:
         with open(testing_data_file, 'w') as outfile:
             for elem in test_data:
-                outfile.write(elem[1]+"\n")
+                outfile.write(elem[0]+"\n")
+                test_dict[elem[0]] = elem[1]
             outfile.write("-\n")
     except IOError as e:
         sys.stderr.write(e)
@@ -73,11 +74,11 @@ for iteration in range(0,k_fold):
         graph = elem[0]
         phone = elem[1]
         phones = phone.split(' ')
+        phones.append('.')
         graph_list = list(graph)
-        graph_list.append('.')
-        for i in range(0,len(graph_list)-1):
-            json_dict[graph_list[i]][graph_list[i+1]][phones[i]] += 1
-        init_prob[graph_list[0]] += 1
+        for i in range(0,len(phones)-1):
+            json_dict[phones[i]][phones[i+1]][graph_list[i]] += 1
+        init_prob[phones[0]] += 1
 
 
     probability = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
@@ -86,27 +87,27 @@ for iteration in range(0,k_fold):
     count = defaultdict(int)
 
 
-    for graph_1 in json_dict:
-        for graph_2 in json_dict[graph_1]:
-            for key in json_dict[graph_1][graph_2]:
-                count[graph_1] += json_dict[graph_1][graph_2][key]
+    for phone_1 in json_dict:
+        for phone_2 in json_dict[phone_1]:
+            for key in json_dict[phone_1][phone_2]:
+                count[phone_1] += json_dict[phone_1][phone_2][key]
 
 
-    for graph_1 in json_dict:
-        for graph_2 in json_dict[graph_1]:
-            for key in json_dict[graph_1][graph_2]:
-                probability[graph_1][graph_2][key] = float(json_dict[graph_1][graph_2][key])/float(count[graph_1])
+    for phone_1 in json_dict:
+        for phone_2 in json_dict[phone_1]:
+            for key in json_dict[phone_1][phone_2]:
+                probability[phone_1][phone_2][key] = float(json_dict[phone_1][phone_2][key])/float(count[phone_1])
 
 
     data_fin = []
-    for graph_1 in sorted(probability):
-        for graph_2 in sorted(probability[graph_1]):
-            for key in sorted(probability[graph_1][graph_2]):
+    for phone_1 in sorted(probability):
+        for phone_2 in sorted(probability[phone_1]):
+            for key in sorted(probability[phone_1][phone_2]):
                 string = ""
-                string += graph_1 + " "
-                string += graph_2 + " "
+                string += phone_1 + " "
+                string += phone_2 + " "
                 string += key + " "
-                string += str(probability[graph_1][graph_2][key])
+                string += str(probability[phone_1][phone_2][key])
                 data_fin.append(string)
 
     try:
@@ -120,8 +121,8 @@ for iteration in range(0,k_fold):
 
     try:
         with open(initial_probabilities_file, 'w') as outfile:
-            for graph in sorted(init_prob):
-                outfile.write(graph+" "+str(init_prob[graph]/len(data))+"\n")
+            for phone in sorted(init_prob):
+                outfile.write(phone+" "+str(init_prob[phone]/len(data))+"\n")
             outfile.write("--\n")
     except IOError as e:
         sys.stderr.write(e)
@@ -139,21 +140,14 @@ for iteration in range(0,k_fold):
 
     output = output.strip()
     output = output.split('\n')
-
     for i in range(0,len(test_data)):
-        a = list(test_data[i][0])
-        b = list(output[i])
+        a = test_data[i][1].split()
+        b = output[i].split()
         for i in range(0,len(a)):
             if a[i] != b[i]:
                 diff_count += 1
-                confusion_matrix[a[i]][b[i]] += 1
             total_phones += 1
 
 print "Accuracy achieved in %d-fold validation: %.2f%%" % (k_fold, float(total_phones - diff_count)* 100/float(total_phones))
 
-import pandas as pd 
-
-a = pd.DataFrame(confusion_matrix)
-
-print a.to_string(na_rep='.')
 

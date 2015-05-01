@@ -155,5 +155,5 @@ import pandas as pd
 
 a = pd.DataFrame(confusion_matrix)
 
-print a.to_string(na_rep='.')
+print a.to_string(na_rep='-')
 
